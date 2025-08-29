@@ -20,7 +20,9 @@ typedef enum {
     NODE_TYPE_WHILE,        // A while loop
     NODE_TYPE_PRINT,        // The print statement
     NODE_TYPE_STMTS,        // A sequence of statements
-    NODE_TYPE_STMTS_BLOCK   // A block of statements enclosed in braces
+    NODE_TYPE_STMTS_BLOCK,  // A block of statements enclosed in braces
+    NODE_TYPE_FOR,          // A for loop
+    NODE_TYPE_EXPR_STMT     // An expression used as a statement
 } NodeType;
 
 // Define data types our language supports
@@ -48,6 +50,7 @@ struct AstNode {
     struct AstNode *right; // Right child (e.g., right side of '+', or 'then' block of 'if')
     // Sometimes a third child is needed (e.g., the 'else' block of 'if')
     struct AstNode *third; 
+    struct AstNode *fourth; // For the 'for' loop's increment expression
     struct Value value;    // For constant nodes
     char* var_name;        // For variable reference or assignment nodes
 };
@@ -104,7 +107,7 @@ int yylex(void);
 %token <id> ID
 
 // Operators and other keywords
-%token IF ELSE PRINT WHILE
+%token IF ELSE PRINT WHILE FOR
 %token ADD SUB MUL DIV ASSIGN
 %token EQ NE LT GT LE GE
 
@@ -115,7 +118,7 @@ int yylex(void);
 %nonassoc ELSE
 
 // Define non-terminals and their types
-%type <node_ptr> program statements statement declaration assignment expression if_statement while_statement statement_block optional_statements
+%type <node_ptr> program statements statement declaration assignment expression if_statement while_statement for_statement statement_block optional_statements optional_assignment optional_expression
 %type <i_val> type_specifier
 
 %%
@@ -128,15 +131,22 @@ program:
 
 statements:
     statement { $$ = $1; }
-    | statements statement { $$ = new_node(NODE_TYPE_STMTS, $1, $2); }
+    | statements statement {
+        if ($1 == NULL && $2 == NULL) $$ = NULL;
+        else if ($1 == NULL) $$ = $2;
+        else if ($2 == NULL) $$ = $1;
+        else $$ = new_node(NODE_TYPE_STMTS, $1, $2);
+    }
     ;
 
 statement:
     declaration
     | assignment ';' { $$ = $1; }
     | PRINT expression ';' { $$ = new_node(NODE_TYPE_PRINT, $2, NULL); }
+    | expression ';' { $$ = new_node(NODE_TYPE_EXPR_STMT, $1, NULL); }
     | if_statement { $$ = $1; }
     | while_statement { $$ = $1; }
+    | for_statement { $$ = $1; }
     | statement_block { $$ = $1; }
     ;
 
@@ -179,6 +189,24 @@ if_statement:
     | IF '(' expression ')' statement ELSE statement { $$ = new_node(NODE_TYPE_IF, $3, $5); $$->third = $7; }
     ;
 
+for_statement:
+    FOR '(' optional_assignment ';' optional_expression ';' optional_assignment ')' statement {
+        $$ = new_node(NODE_TYPE_FOR, $3, $5); // left=init, right=condition
+        $$->third = $9;  // third=body
+        $$->fourth = $7; // fourth=increment
+    }
+    ;
+
+optional_assignment:
+    /* empty */ { $$ = NULL; }
+    | assignment { $$ = $1; }
+    ;
+
+optional_expression:
+    /* empty */ { $$ = NULL; }
+    | expression { $$ = $1; }
+    ;
+
 while_statement:
     WHILE '(' expression ')' statement { $$ = new_node(NODE_TYPE_WHILE, $3, $5); }
     ;
@@ -200,6 +228,7 @@ struct AstNode* new_node(NodeType type, struct AstNode* left, struct AstNode* ri
     node->left = left;
     node->right = right;
     node->third = NULL;
+    node->fourth = NULL; // Initialize the new field
     node->var_name = NULL;
     return node;
 }
@@ -208,7 +237,7 @@ struct AstNode* new_const_node(struct Value val) {
     struct AstNode* node = (struct AstNode*)malloc(sizeof(struct AstNode));
     node->node_type = NODE_TYPE_CONSTANT;
     node->value = val;
-    node->left = node->right = node->third = NULL;
+    node->left = node->right = node->third = node->fourth = NULL; // Initialize all new fields
     node->var_name = NULL;
     return node;
 }
@@ -217,7 +246,7 @@ struct AstNode* new_var_ref_node(char* name) {
     struct AstNode* node = (struct AstNode*)malloc(sizeof(struct AstNode));
     node->node_type = NODE_TYPE_VAR_REF;
     node->var_name = name;
-    node->left = node->right = node->third = NULL;
+    node->left = node->right = node->third = node->fourth = NULL; // Initialize all new fields
     return node;
 }
 
@@ -284,7 +313,9 @@ void generate_c_code(FILE* file, struct AstNode* node) {
 }
 
 void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
-    if (!node) return;
+    if (!node) {
+        return;
+    }
 
     switch (node->node_type) {
         case NODE_TYPE_ASSIGN:
@@ -343,9 +374,27 @@ void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
         
         case NODE_TYPE_STMTS_BLOCK: // A block of statements
             fprintf(file, "{\n");
-            generate_c_statement(file, node->left, indent + 1);
+            if (node->left) generate_c_statement(file, node->left, indent + 1);
             indent_line(file, indent);
             fprintf(file, "}\n");
+            break;
+
+        case NODE_TYPE_FOR:
+            indent_line(file, indent);
+            fprintf(file, "for (");
+            if (node->left) generate_c_expression(file, node->left);
+            fprintf(file, "; ");
+            if (node->right) generate_c_expression(file, node->right);
+            fprintf(file, "; ");
+            if (node->fourth) generate_c_expression(file, node->fourth);
+            fprintf(file, ") ");
+            generate_c_statement(file, node->third, indent);
+            break;
+
+        case NODE_TYPE_EXPR_STMT:
+            indent_line(file, indent);
+            generate_c_expression(file, node->left);
+            fprintf(file, ";\n");
             break;
 
         default:
@@ -357,7 +406,9 @@ void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
 }
 
 void generate_c_expression(FILE* file, struct AstNode* node) {
-    if (!node) return;
+    if (!node) {
+        return;
+    }
 
     switch (node->node_type) {
         case NODE_TYPE_CONSTANT:
@@ -385,6 +436,10 @@ void generate_c_expression(FILE* file, struct AstNode* node) {
             fprintf(file, " %s ", op_str);
             generate_c_expression(file, node->right);
             fprintf(file, ")");
+            break;
+        case NODE_TYPE_ASSIGN:
+            fprintf(file, "%s = ", node->var_name);
+            generate_c_expression(file, node->left);
             break;
         default:
             break;

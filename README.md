@@ -11,6 +11,7 @@ This is a project for a compilers course that implements a source-to-source comp
 - **Control Flow**:
   - `if (condition) { ... } else { ... }` statements.
   - `while (condition) { ... }` loops.
+  - `for (init; condition; increment) { ... }` loops.
 - **Expressions**: Arithmetic (`+`, `-`, `*`, `/`) and relational (`==`, `!=`, `<`, `>`, `<=`, `>=`) operators are supported.
 - **Statement Blocks**: Code can be grouped into blocks using curly braces `{ ... }`.
 - **Printing**: The `print` statement can be used to output the value of any expression.

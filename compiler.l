@@ -11,6 +11,7 @@
 "bool"        { return BOOL_KWD; }
 "string"      { return STRING_KWD; }
 "while"       { return WHILE; }
+"for"         { return FOR; }
 
 "true"        { yylval.b_val = 1; return BOOL_LITERAL; }
 "false"       { yylval.b_val = 0; return BOOL_LITERAL; }

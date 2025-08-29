@@ -19,6 +19,7 @@ sections/
 test.txt
 test_control_flow.txt
 test_codegen.txt
+test_for_loop.txt
 
 # Generated C code and executable
 output.c
