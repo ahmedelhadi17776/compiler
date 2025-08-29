@@ -6,10 +6,24 @@
 "if"          { return IF; }
 "else"        { return ELSE; }
 "print"       { return PRINT; }
+"int"         { return INT_KWD; }
+"float"       { return FLOAT_KWD; }
+"bool"        { return BOOL_KWD; }
+"string"      { return STRING_KWD; }
 
-[a-zA-Z][a-zA-Z0-9]* { yylval.id = strdup(yytext); return ID; } // Identifiers
-[0-9]+        { yylval.ival = atoi(yytext); return INT_NUM; } // Integers
-[0-9]+\.[0-9]+ { yylval.fval = atof(yytext); return FLOAT_NUM; } // Floats
+"true"        { yylval.b_val = 1; return BOOL_LITERAL; }
+"false"       { yylval.b_val = 0; return BOOL_LITERAL; }
+
+[a-zA-Z_][a-zA-Z0-9_]* { yylval.id = strdup(yytext); return ID; }
+[0-9]+        { yylval.i_val = atoi(yytext); return INT_LITERAL; }
+[0-9]+\.[0-9]+ { yylval.f_val = atof(yytext); return FLOAT_LITERAL; }
+\"[^"]*\"    { 
+    yytext[strlen(yytext) - 1] = '\0'; // Remove trailing quote
+    yylval.s_val = strdup(yytext + 1); // Copy string without leading quote
+    return STRING_LITERAL;
+}
+
+"//".*      ; // Ignore single-line comments
 
 "+"           { return ADD; }
 "-"           { return SUB; }

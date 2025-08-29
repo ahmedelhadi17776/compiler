@@ -1,6 +1,16 @@
 # Simple Compiler Frontend
 
-This is a project for a compilers course that implements the first three phases of a compiler: lexical, syntax, and semantic analysis. It is built for a simple procedural language using Flex and Bison.
+This is a project for a compilers course that implements the first three phases of a compiler for a simple procedural language. It is built using Flex and Bison.
+
+## Language Features
+
+- **Data Types**: `int`, `float`, `bool`, `string`
+- **Variables**: Multi-character names (e.g., `my_var`, `counter_1`).
+- **Declarations**: Variables must be declared with their type before use (e.g., `int x;`).
+- **Assignments**: `variable = expression;`
+- **Expressions**: Basic arithmetic (`+`) is supported for numeric types.
+- **Printing**: The `print` statement can be used to output the value of any expression.
+- **Comments**: Single-line comments starting with `//` are supported.
 
 ## Tools Used
 
