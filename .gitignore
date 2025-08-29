@@ -1,0 +1,19 @@
+# Generated files
+compiler.tab.c
+compiler.tab.h
+lex.yy.c
+
+# Executable
+my_compiler.exe
+
+# Object files
+*.o
+
+# OS/Editor specific
+.vscode/
+Thumbs.db
+
+
+md/
+sections/
+test.txt
