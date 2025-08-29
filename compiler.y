@@ -19,7 +19,8 @@ typedef enum {
     NODE_TYPE_IF,           // An if-else statement
     NODE_TYPE_WHILE,        // A while loop
     NODE_TYPE_PRINT,        // The print statement
-    NODE_TYPE_STMTS         // A sequence of statements (e.g., in a block)
+    NODE_TYPE_STMTS,        // A sequence of statements
+    NODE_TYPE_STMTS_BLOCK   // A block of statements enclosed in braces
 } NodeType;
 
 // Define data types our language supports
@@ -64,12 +65,16 @@ int sym_count = 0;
 // Symbol table / memory management during execution
 struct Value memory_stack[MAX_SYMBOLS];
 
+// Global pointer to the root of the AST
+struct AstNode *ast_root = NULL;
+
 // Function prototypes
 struct AstNode* new_node(NodeType type, struct AstNode* left, struct AstNode* right);
 struct AstNode* new_const_node(struct Value val);
 struct AstNode* new_var_ref_node(char* name);
 struct Symbol* lookup(char* name);
 void install(char* name, int type);
+void generate_c_code(FILE* file, struct AstNode* node); // The new code gen function
 
 extern FILE* yyin;
 extern int yylineno;
@@ -115,11 +120,9 @@ int yylex(void);
 
 %%
 program:
-    /* empty */ { $$ = NULL; }
+    /* empty */ { ast_root = NULL; }
     | statements { 
-        // When parsing is done, execute the tree
-        execute_ast($1); 
-        printf("Execution complete!\n"); fflush(stdout);
+        ast_root = $1; // Assign the completed tree to our global root
     }
     ;
 
@@ -181,7 +184,7 @@ while_statement:
     ;
 
 statement_block:
-    '{' optional_statements '}' { $$ = $2; }
+    '{' optional_statements '}' { $$ = new_node(NODE_TYPE_STMTS_BLOCK, $2, NULL); }
     ;
 
 optional_statements:
@@ -244,151 +247,182 @@ void install(char* name, int type) {
     sym_count++;
 }
 
-// --- Tree Execution Engine ---
-// This function traverses the AST and returns a Value struct
-struct Value eval_ast(struct AstNode* node) {
-    if (!node) {
-        return (struct Value){TYPE_VOID};
+// --- C Code Generation Engine ---
+void generate_c_statement(FILE* file, struct AstNode* node, int indent);
+void generate_c_expression(FILE* file, struct AstNode* node);
+char* get_c_type_string(int type);
+int get_expression_type(struct AstNode* node);
+
+void indent_line(FILE* file, int level) {
+    for (int i = 0; i < level * 4; i++) {
+        fprintf(file, " ");
     }
+}
+
+void generate_c_code(FILE* file, struct AstNode* node) {
+    if (!file) return;
+
+    // Print C boilerplate
+    fprintf(file, "#include <stdio.h>\n");
+    fprintf(file, "#include <stdbool.h>\n\n");
+    fprintf(file, "int main() {\n");
+
+    // Print variable declarations
+    for (int i = 0; i < sym_count; i++) {
+        indent_line(file, 1);
+        fprintf(file, "%s %s;\n", get_c_type_string(sym_table[i].type), sym_table[i].name);
+    }
+    if (sym_count > 0) fprintf(file, "\n");
+
+    // Generate code for the program body
+    generate_c_statement(file, node, 1);
+
+    // Print closing boilerplate
+    indent_line(file, 1);
+    fprintf(file, "return 0;\n");
+    fprintf(file, "}\n");
+}
+
+void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
+    if (!node) return;
+
+    switch (node->node_type) {
+        case NODE_TYPE_ASSIGN:
+            indent_line(file, indent);
+            fprintf(file, "%s = ", node->var_name);
+            generate_c_expression(file, node->left);
+            fprintf(file, ";\n");
+            break;
+
+        case NODE_TYPE_PRINT: {
+            int expr_type = get_expression_type(node->left);
+            indent_line(file, indent);
+
+            if (expr_type == TYPE_BOOL) {
+                fprintf(file, "printf(\"Output: %%s\\n\", (");
+                generate_c_expression(file, node->left);
+                fprintf(file, ") ? \"true\" : \"false\");\n");
+            } else {
+                char* format = "%d";
+                if (expr_type == TYPE_FLOAT) format = "%f";
+                else if (expr_type == TYPE_STRING) format = "%s";
+
+                fprintf(file, "printf(\"Output: %s\\n\", ", format);
+                generate_c_expression(file, node->left);
+                fprintf(file, ");\n");
+            }
+            break;
+        }
+
+        case NODE_TYPE_IF:
+            indent_line(file, indent);
+            fprintf(file, "if (");
+            generate_c_expression(file, node->left);
+            fprintf(file, ") ");
+            generate_c_statement(file, node->right, indent); // Blocks handle their own indentation
+            if (node->third) {
+                fprintf(file, " else ");
+                generate_c_statement(file, node->third, indent);
+            }
+            fprintf(file, "\n");
+            break;
+
+        case NODE_TYPE_WHILE:
+            indent_line(file, indent);
+            fprintf(file, "while (");
+            generate_c_expression(file, node->left);
+            fprintf(file, ") ");
+            generate_c_statement(file, node->right, indent);
+            fprintf(file, "\n");
+            break;
+        
+        case NODE_TYPE_STMTS:
+            generate_c_statement(file, node->left, indent);
+            generate_c_statement(file, node->right, indent);
+            break;
+        
+        case NODE_TYPE_STMTS_BLOCK: // A block of statements
+            fprintf(file, "{\n");
+            generate_c_statement(file, node->left, indent + 1);
+            indent_line(file, indent);
+            fprintf(file, "}\n");
+            break;
+
+        default:
+            indent_line(file, indent);
+            generate_c_expression(file, node);
+            fprintf(file, ";\n");
+            break;
+    }
+}
+
+void generate_c_expression(FILE* file, struct AstNode* node) {
+    if (!node) return;
 
     switch (node->node_type) {
         case NODE_TYPE_CONSTANT:
-            return node->value;
+            if (node->value.type == TYPE_INT) fprintf(file, "%d", node->value.val.i_val);
+            else if (node->value.type == TYPE_FLOAT) fprintf(file, "%f", node->value.val.f_val);
+            else if (node->value.type == TYPE_BOOL) fprintf(file, "%s", node->value.val.b_val ? "true" : "false");
+            else if (node->value.type == TYPE_STRING) fprintf(file, "\"%s\"", node->value.val.s_val);
+            break;
 
-        case NODE_TYPE_VAR_REF: {
-            struct Symbol* sym = lookup(node->var_name);
-            int sym_index = sym - sym_table; // Get index from pointer arithmetic
-            return memory_stack[sym_index];
-        }
+        case NODE_TYPE_VAR_REF:
+            fprintf(file, "%s", node->var_name);
+            break;
 
-        case NODE_TYPE_ASSIGN: {
-            struct Symbol* sym = lookup(node->var_name);
-            int sym_index = sym - sym_table;
-            struct Value rhs_val = eval_ast(node->left);
-            
-            // Type promotion: allow assigning an INT to a FLOAT
-            if (sym->type == TYPE_FLOAT && rhs_val.type == TYPE_INT) {
-                rhs_val.type = TYPE_FLOAT;
-                rhs_val.val.f_val = rhs_val.val.i_val; // Promote
+        case NODE_TYPE_OP:
+            fprintf(file, "(");
+            generate_c_expression(file, node->left);
+            char* op_str = "?";
+            switch(node->value.val.i_val) {
+                case ADD: op_str = "+"; break; case SUB: op_str = "-"; break;
+                case MUL: op_str = "*"; break; case DIV: op_str = "/"; break;
+                case EQ: op_str = "=="; break; case NE: op_str = "!="; break;
+                case LT: op_str = "<"; break; case GT: op_str = ">"; break;
+                case LE: op_str = "<="; break; case GE: op_str = ">="; break;
             }
-
-            // Type check
-            if (sym->type != rhs_val.type) {
-                yyerror("Type mismatch in assignment.");
-                return (struct Value){TYPE_VOID};
-            }
-
-            // Free old string value if necessary
-            if (sym->type == TYPE_STRING && memory_stack[sym_index].val.s_val) {
-                free(memory_stack[sym_index].val.s_val);
-            }
-            memory_stack[sym_index] = rhs_val;
-            return (struct Value){TYPE_VOID};
-        }
-
-        case NODE_TYPE_OP: {
-            struct Value left_val = eval_ast(node->left);
-            struct Value right_val = eval_ast(node->right);
-            struct Value result;
-
-            // --- Arithmetic Operations ---
-            if (node->value.val.i_val >= ADD && node->value.val.i_val <= DIV) {
-                // Promote to float if either operand is a float
-                if (left_val.type == TYPE_FLOAT || right_val.type == TYPE_FLOAT) {
-                    double left_d = (left_val.type == TYPE_INT) ? left_val.val.i_val : left_val.val.f_val;
-                    double right_d = (right_val.type == TYPE_INT) ? right_val.val.i_val : right_val.val.f_val;
-                    result.type = TYPE_FLOAT;
-                    if (node->value.val.i_val == ADD) result.val.f_val = left_d + right_d;
-                    else if (node->value.val.i_val == SUB) result.val.f_val = left_d - right_d;
-                    else if (node->value.val.i_val == MUL) result.val.f_val = left_d * right_d;
-                    else if (node->value.val.i_val == DIV) {
-                        result.type = TYPE_FLOAT;
-                        if (right_d == 0) { yyerror("Division by zero"); result.val.f_val = 0; }
-                        else { result.val.f_val = left_d / right_d; }
-                    }
-                } else { // Both are integers
-                    result.type = TYPE_INT;
-                    if (node->value.val.i_val == ADD) result.val.i_val = left_val.val.i_val + right_val.val.i_val;
-                    else if (node->value.val.i_val == SUB) result.val.i_val = left_val.val.i_val - right_val.val.i_val;
-                    else if (node->value.val.i_val == MUL) result.val.i_val = left_val.val.i_val * right_val.val.i_val;
-                    else if (node->value.val.i_val == DIV) {
-                        result.type = TYPE_INT;
-                        if (right_val.val.i_val == 0) { yyerror("Division by zero"); result.val.i_val = 0; }
-                        else { result.val.i_val = left_val.val.i_val / right_val.val.i_val; }
-                    }
-                }
-            } 
-            // --- Relational Operations ---
-            else {
-                double left_d = (left_val.type == TYPE_INT) ? left_val.val.i_val : left_val.val.f_val;
-                double right_d = (right_val.type == TYPE_INT) ? right_val.val.i_val : right_val.val.f_val;
-                result.type = TYPE_BOOL;
-                if (node->value.val.i_val == EQ) result.val.b_val = (left_d == right_d);
-                else if (node->value.val.i_val == NE) result.val.b_val = (left_d != right_d);
-                else if (node->value.val.i_val == LT) result.val.b_val = (left_d < right_d);
-                else if (node->value.val.i_val == GT) result.val.b_val = (left_d > right_d);
-                else if (node->value.val.i_val == LE) result.val.b_val = (left_d <= right_d);
-                else if (node->value.val.i_val == GE) result.val.b_val = (left_d >= right_d);
-            }
-            return result;
-        }
-
-        case NODE_TYPE_IF: {
-            struct Value cond = eval_ast(node->left);
-            if (cond.type != TYPE_BOOL) {
-                yyerror("If condition must be a boolean.");
-                return (struct Value){TYPE_VOID};
-            }
-
-            if (cond.val.b_val) { // If true
-                eval_ast(node->right);
-            } else if (node->third) { // If false, and there's an else block
-                eval_ast(node->third);
-            }
-            return (struct Value){TYPE_VOID};
-        }
-
-        case NODE_TYPE_WHILE: {
-            while (1) {
-                struct Value cond = eval_ast(node->left);
-                if (cond.type != TYPE_BOOL) {
-                    yyerror("While condition must be a boolean.");
-                    break;
-                }
-                if (!cond.val.b_val) {
-                    break; // Exit loop
-                }
-                eval_ast(node->right);
-            }
-            return (struct Value){TYPE_VOID};
-        }
-
-        case NODE_TYPE_PRINT: {
-            struct Value v = eval_ast(node->left);
-            if (v.type == TYPE_INT) printf("Output: %d\n", v.val.i_val);
-            else if (v.type == TYPE_FLOAT) printf("Output: %f\n", v.val.f_val);
-            else if (v.type == TYPE_BOOL) printf("Output: %s\n", v.val.b_val ? "true" : "false");
-            else if (v.type == TYPE_STRING) printf("Output: \"%s\"\n", v.val.s_val);
-            fflush(stdout);
-            return (struct Value){TYPE_VOID};
-        }
-
-        case NODE_TYPE_STMTS:
-            eval_ast(node->left);
-            eval_ast(node->right);
-            return (struct Value){TYPE_VOID};
-
+            fprintf(file, " %s ", op_str);
+            generate_c_expression(file, node->right);
+            fprintf(file, ")");
+            break;
         default:
-            yyerror("Internal error: Unknown AST node type in execution");
-            return (struct Value){TYPE_VOID};
+            break;
     }
 }
 
-// The old execute_ast is now just a wrapper for eval_ast
-void execute_ast(struct AstNode* node) {
-    eval_ast(node);
+char* get_c_type_string(int type) {
+    switch (type) {
+        case TYPE_INT: return "int";
+        case TYPE_FLOAT: return "float";
+        case TYPE_BOOL: return "bool";
+        case TYPE_STRING: return "char*";
+        default: return "void";
+    }
 }
 
+int get_expression_type(struct AstNode* node) {
+    if (!node) return TYPE_VOID;
+
+    switch(node->node_type) {
+        case NODE_TYPE_CONSTANT:
+            return node->value.type;
+        case NODE_TYPE_VAR_REF:
+            return lookup(node->var_name)->type;
+        case NODE_TYPE_OP: {
+            int ltype = get_expression_type(node->left);
+            int rtype = get_expression_type(node->right);
+            if (node->value.val.i_val >= ADD && node->value.val.i_val <= DIV) {
+                if (ltype == TYPE_FLOAT || rtype == TYPE_FLOAT) return TYPE_FLOAT;
+                return TYPE_INT;
+            } else {
+                return TYPE_BOOL;
+            }
+        }
+        default:
+            return TYPE_VOID;
+    }
+}
 
 int main(int argc, char** argv) {
     if (argc > 1) {
@@ -401,7 +435,19 @@ int main(int argc, char** argv) {
     }
 
     if (!yyparse()) {
-        printf("Parsing complete!\n");
+        printf("Parsing complete! Generating C code...\n");
+        
+        FILE* c_output_file = fopen("output.c", "w");
+        if (!c_output_file) {
+            fprintf(stderr, "Could not open output.c for writing\n");
+            return 1;
+        }
+
+        generate_c_code(c_output_file, ast_root);
+        fclose(c_output_file);
+
+        printf("C code generated in output.c. You can now compile it with:\ngcc output.c -o output.exe\n");
+
     } else {
         printf("Parsing failed.\n");
     }

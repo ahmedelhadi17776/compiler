@@ -18,3 +18,8 @@ md/
 sections/
 test.txt
 test_control_flow.txt
+test_codegen.txt
+
+# Generated C code and executable
+output.c
+output.exe

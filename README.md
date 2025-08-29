@@ -1,6 +1,6 @@
-# Simple Compiler Frontend
+# Simple Language to C Compiler
 
-This is a project for a compilers course that implements the first three phases of a compiler for a simple procedural language. It is built using Flex and Bison.
+This is a project for a compilers course that implements a source-to-source compiler. It takes programs written in a custom, simple language and translates them into equivalent, runnable C code. It is built using Flex and Bison.
 
 ## Language Features
 
@@ -16,25 +16,11 @@ This is a project for a compilers course that implements the first three phases 
 - **Printing**: The `print` statement can be used to output the value of any expression.
 - **Comments**: Single-line comments starting with `//` are supported.
 
-## Tools Used
+## How to Build and Use the Compiler
 
-- **Flex**: For generating the lexical analyzer.
-- **Bison**: For generating the parser.
-- **C**: For the semantic actions and the main driver code.
-- **GCC**: To compile the final executable.
-- **Control Flow**:
-  - `if (condition) { ... } else { ... }` statements.
-  - `while (condition) { ... }` loops.
-- **Expressions**: Arithmetic (`+`, `-`, `*`, `/`) and relational (`==`, `!=`, `<`, `>`, `<=`, `>=`) operators are supported.
-- **Statement Blocks**: Code can be grouped into blocks using curly braces `{ ... }`.
-- **Printing**: The `print` statement can be used to output the value of any expression.
-- **Comments**: Single-line comments starting with `//` are supported.
+1.  **Prerequisites**: Ensure you have Flex, Bison, and a C compiler (like GCC) installed.
 
-## How to Build and Run
-
-1.  **Prerequisites**: Ensure you have Flex, Bison, and a C compiler (like GCC) installed and available in your system's PATH. On Windows, the `winflexbison` package is a good choice.
-
-2.  **Compile the Compiler**: Run the following commands in your terminal:
+2.  **Compile the Compiler**: Run the following commands in your terminal to build `my_compiler.exe`:
 
     ```sh
     win_bison -d compiler.y
@@ -42,8 +28,14 @@ This is a project for a compilers course that implements the first three phases 
     gcc compiler.tab.c lex.yy.c -o my_compiler.exe
     ```
 
-3.  **Run the Compiler**: The program is configured to take a source file as a command-line argument.
+3.  **Translate Your Code to C**: Use the compiled compiler to translate a source file (e.g., `test.txt`) into C code. This will generate an `output.c` file.
+
     ```sh
     ./my_compiler.exe test.txt
     ```
-    The output of the compilation will be printed to the console.
+
+4.  **Compile and Run the C Output**: Use a C compiler (like GCC) to compile the generated `output.c` into a final executable, and then run it.
+    ```sh
+    gcc output.c -o output.exe
+    ./output.exe
+    ```
