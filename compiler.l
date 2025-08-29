@@ -12,6 +12,10 @@
 "string"      { return STRING_KWD; }
 "while"       { return WHILE; }
 "for"         { return FOR; }
+"spidey"      { return SPIDEY; }
+"3mk"         { return CASE; }
+"otherwise"   { return DEFAULT; }
+"cut"         { return BREAK; }
 
 "true"        { yylval.b_val = 1; return BOOL_LITERAL; }
 "false"       { yylval.b_val = 0; return BOOL_LITERAL; }
@@ -40,6 +44,7 @@
 ">="          { return GE; }
 
 ";"           { return ';'; }
+":"           { return ':'; }
 "("           { return '('; }
 ")"           { return ')'; }
 "{"           { return '{'; }

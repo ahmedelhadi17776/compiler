@@ -12,6 +12,10 @@ This is a project for a compilers course that implements a source-to-source comp
   - `if (condition) { ... } else { ... }` statements.
   - `while (condition) { ... }` loops.
   - `for (init; condition; increment) { ... }` loops.
+  - `spidey (expression) { ... }` statements (equivalent to `switch`).
+    - `3mk value: { ... }` (equivalent to `case`).
+    - `otherwise: { ... }` (equivalent to `default`).
+    - `cut;` (equivalent to `break`).
 - **Expressions**: Arithmetic (`+`, `-`, `*`, `/`) and relational (`==`, `!=`, `<`, `>`, `<=`, `>=`) operators are supported.
 - **Statement Blocks**: Code can be grouped into blocks using curly braces `{ ... }`.
 - **Printing**: The `print` statement can be used to output the value of any expression.

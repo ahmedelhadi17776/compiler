@@ -22,7 +22,12 @@ typedef enum {
     NODE_TYPE_STMTS,        // A sequence of statements
     NODE_TYPE_STMTS_BLOCK,  // A block of statements enclosed in braces
     NODE_TYPE_FOR,          // A for loop
-    NODE_TYPE_EXPR_STMT     // An expression used as a statement
+    NODE_TYPE_EXPR_STMT,     // An expression used as a statement
+    NODE_TYPE_SPIDEY,
+    NODE_TYPE_CASE_LIST,
+    NODE_TYPE_CASE,
+    NODE_TYPE_DEFAULT,
+    NODE_TYPE_BREAK
 } NodeType;
 
 // Define data types our language supports
@@ -108,6 +113,7 @@ int yylex(void);
 
 // Operators and other keywords
 %token IF ELSE PRINT WHILE FOR
+%token SPIDEY CASE DEFAULT BREAK
 %token ADD SUB MUL DIV ASSIGN
 %token EQ NE LT GT LE GE
 
@@ -118,7 +124,7 @@ int yylex(void);
 %nonassoc ELSE
 
 // Define non-terminals and their types
-%type <node_ptr> program statements statement declaration assignment expression if_statement while_statement for_statement statement_block optional_statements optional_assignment optional_expression
+%type <node_ptr> program statements statement declaration assignment expression if_statement while_statement for_statement statement_block optional_statements optional_assignment optional_expression spidey_statement case_list case_clause break_statement
 %type <i_val> type_specifier
 
 %%
@@ -131,7 +137,7 @@ program:
 
 statements:
     statement { $$ = $1; }
-    | statements statement {
+    | statement statements {
         if ($1 == NULL && $2 == NULL) $$ = NULL;
         else if ($1 == NULL) $$ = $2;
         else if ($2 == NULL) $$ = $1;
@@ -147,7 +153,9 @@ statement:
     | if_statement { $$ = $1; }
     | while_statement { $$ = $1; }
     | for_statement { $$ = $1; }
+    | spidey_statement { $$ = $1; }
     | statement_block { $$ = $1; }
+    | break_statement { $$ = $1; }
     ;
 
 declaration:
@@ -209,6 +217,29 @@ optional_expression:
 
 while_statement:
     WHILE '(' expression ')' statement { $$ = new_node(NODE_TYPE_WHILE, $3, $5); }
+    ;
+
+spidey_statement:
+    SPIDEY '(' expression ')' '{' case_list '}' { $$ = new_node(NODE_TYPE_SPIDEY, $3, $6); }
+    ;
+
+case_list:
+    /* empty */ { $$ = NULL; }
+    | case_list case_clause {
+        if ($1 == NULL && $2 == NULL) $$ = NULL;
+        else if ($1 == NULL) $$ = $2;
+        else if ($2 == NULL) $$ = $1;
+        else $$ = new_node(NODE_TYPE_CASE_LIST, $1, $2);
+    }
+    ;
+
+case_clause:
+    CASE expression ':' '{' statements '}' { $$ = new_node(NODE_TYPE_CASE, $2, $5); }
+    | DEFAULT ':' '{' statements '}' { $$ = new_node(NODE_TYPE_DEFAULT, $4, NULL); }
+    ;
+
+break_statement:
+    BREAK ';' { $$ = new_node(NODE_TYPE_BREAK, NULL, NULL); }
     ;
 
 statement_block:
@@ -395,6 +426,40 @@ void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
             indent_line(file, indent);
             generate_c_expression(file, node->left);
             fprintf(file, ";\n");
+            break;
+
+        case NODE_TYPE_SPIDEY:
+            indent_line(file, indent);
+            fprintf(file, "switch (");
+            generate_c_expression(file, node->left);
+            fprintf(file, ") {\n");
+            if (node->right) generate_c_statement(file, node->right, indent + 1);
+            indent_line(file, indent);
+            fprintf(file, "}\n");
+            break;
+
+        case NODE_TYPE_CASE_LIST:
+            generate_c_statement(file, node->left, indent);
+            generate_c_statement(file, node->right, indent);
+            break;
+            
+        case NODE_TYPE_CASE:
+            indent_line(file, indent);
+            fprintf(file, "case ");
+            generate_c_expression(file, node->left);
+            fprintf(file, ":\n");
+            if (node->right) generate_c_statement(file, node->right, indent + 1);
+            break;
+
+        case NODE_TYPE_DEFAULT:
+            indent_line(file, indent);
+            fprintf(file, "default:\n");
+            if (node->left) generate_c_statement(file, node->left, indent + 1);
+            break;
+
+        case NODE_TYPE_BREAK:
+            indent_line(file, indent);
+            fprintf(file, "break;\n");
             break;
 
         default:
