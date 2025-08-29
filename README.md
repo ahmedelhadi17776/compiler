@@ -8,7 +8,11 @@ This is a project for a compilers course that implements the first three phases 
 - **Variables**: Multi-character names (e.g., `my_var`, `counter_1`).
 - **Declarations**: Variables must be declared with their type before use (e.g., `int x;`).
 - **Assignments**: `variable = expression;`
-- **Expressions**: Basic arithmetic (`+`) is supported for numeric types.
+- **Control Flow**:
+  - `if (condition) { ... } else { ... }` statements.
+  - `while (condition) { ... }` loops.
+- **Expressions**: Arithmetic (`+`, `-`, `*`, `/`) and relational (`==`, `!=`, `<`, `>`, `<=`, `>=`) operators are supported.
+- **Statement Blocks**: Code can be grouped into blocks using curly braces `{ ... }`.
 - **Printing**: The `print` statement can be used to output the value of any expression.
 - **Comments**: Single-line comments starting with `//` are supported.
 
@@ -18,6 +22,13 @@ This is a project for a compilers course that implements the first three phases 
 - **Bison**: For generating the parser.
 - **C**: For the semantic actions and the main driver code.
 - **GCC**: To compile the final executable.
+- **Control Flow**:
+  - `if (condition) { ... } else { ... }` statements.
+  - `while (condition) { ... }` loops.
+- **Expressions**: Arithmetic (`+`, `-`, `*`, `/`) and relational (`==`, `!=`, `<`, `>`, `<=`, `>=`) operators are supported.
+- **Statement Blocks**: Code can be grouped into blocks using curly braces `{ ... }`.
+- **Printing**: The `print` statement can be used to output the value of any expression.
+- **Comments**: Single-line comments starting with `//` are supported.
 
 ## How to Build and Run
 

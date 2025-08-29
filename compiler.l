@@ -10,6 +10,7 @@
 "float"       { return FLOAT_KWD; }
 "bool"        { return BOOL_KWD; }
 "string"      { return STRING_KWD; }
+"while"       { return WHILE; }
 
 "true"        { yylval.b_val = 1; return BOOL_LITERAL; }
 "false"       { yylval.b_val = 0; return BOOL_LITERAL; }
@@ -40,6 +41,8 @@
 ";"           { return ';'; }
 "("           { return '('; }
 ")"           { return ')'; }
+"{"           { return '{'; }
+"}"           { return '}'; }
 
 [ \t]         ; // Ignore whitespace
 [\n\r]+       { /* yylineno is automatically incremented */ }
