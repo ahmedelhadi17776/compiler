@@ -12,6 +12,8 @@
 "string"      { return STRING_KWD; }
 "while"       { return WHILE; }
 "for"         { return FOR; }
+"func"        { return FUNC; }
+"return"      { return RETURN; }
 "spidey"      { return SPIDEY; }
 "3mk"         { return CASE; }
 "otherwise"   { return DEFAULT; }
@@ -49,6 +51,7 @@
 ")"           { return ')'; }
 "{"           { return '{'; }
 "}"           { return '}'; }
+","           { return ','; }
 
 [ \t]         ; // Ignore whitespace
 [\n\r]+       { /* yylineno is automatically incremented */ }

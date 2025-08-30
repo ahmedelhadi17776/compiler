@@ -6,8 +6,12 @@ This is a project for a compilers course that implements a source-to-source comp
 
 - **Data Types**: `int`, `float`, `bool`, `string`
 - **Variables**: Multi-character names (e.g., `my_var`, `counter_1`).
-- **Declarations**: Variables must be declared with their type before use (e.g., `int x;`).
+- **Declarations**: Variables must be declared with their type before use (e.g., `int x;`). All variables are currently global.
 - **Assignments**: `variable = expression;`
+- **Functions**:
+  - **Declaration**: `return_type func function_name(param1, param2) { ... }`
+  - **Return**: Use the `return` statement to return a value from a function.
+  - **Calls**: Standard function call syntax `function_name(arg1, arg2)`.
 - **Control Flow**:
   - `if (condition) { ... } else { ... }` statements.
   - `while (condition) { ... }` loops.

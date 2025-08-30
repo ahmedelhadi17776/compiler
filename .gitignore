@@ -21,6 +21,7 @@ test_control_flow.txt
 test_codegen.txt
 test_for_loop.txt
 test_spidey.txt
+test_functions.txt
 
 # Generated C code and executable
 output.c

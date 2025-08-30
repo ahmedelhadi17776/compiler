@@ -27,7 +27,12 @@ typedef enum {
     NODE_TYPE_CASE_LIST,
     NODE_TYPE_CASE,
     NODE_TYPE_DEFAULT,
-    NODE_TYPE_BREAK
+    NODE_TYPE_BREAK,
+    NODE_TYPE_FUNC_DEF,
+    NODE_TYPE_FUNC_CALL,
+    NODE_TYPE_RETURN,
+    NODE_TYPE_VAR_DECL,
+    NODE_TYPE_PARAM
 } NodeType;
 
 // Define data types our language supports
@@ -61,9 +66,12 @@ struct AstNode {
 };
 
 // The structure for our symbol table entries
+typedef enum { SYM_VAR, SYM_FUNC } SymbolType;
 struct Symbol {
     char *name;
-    int type; // We only need to store the declared type here
+    int type; // For vars: TYPE_INT etc. For funcs: return type
+    SymbolType sym_type;
+    struct AstNode *params; // For functions
 };
 
 #define MAX_SYMBOLS 100
@@ -81,7 +89,8 @@ struct AstNode* new_node(NodeType type, struct AstNode* left, struct AstNode* ri
 struct AstNode* new_const_node(struct Value val);
 struct AstNode* new_var_ref_node(char* name);
 struct Symbol* lookup(char* name);
-void install(char* name, int type);
+void install_var(char* name, int type);
+void install_func(char* name, int type, struct AstNode* params);
 void generate_c_code(FILE* file, struct AstNode* node); // The new code gen function
 
 extern FILE* yyin;
@@ -102,7 +111,7 @@ int yylex(void);
 }
 
 // Define tokens for type keywords
-%token INT_KWD FLOAT_KWD BOOL_KWD STRING_KWD
+%token INT_KWD FLOAT_KWD BOOL_KWD STRING_KWD FUNC
 
 // Literal tokens
 %token <i_val> INT_LITERAL
@@ -112,7 +121,7 @@ int yylex(void);
 %token <id> ID
 
 // Operators and other keywords
-%token IF ELSE PRINT WHILE FOR
+%token IF ELSE PRINT WHILE FOR RETURN
 %token SPIDEY CASE DEFAULT BREAK
 %token ADD SUB MUL DIV ASSIGN
 %token EQ NE LT GT LE GE
@@ -125,6 +134,7 @@ int yylex(void);
 
 // Define non-terminals and their types
 %type <node_ptr> program statements statement declaration assignment expression if_statement while_statement for_statement statement_block optional_statements optional_assignment optional_expression spidey_statement case_list case_clause break_statement
+%type <node_ptr> function_definition return_statement opt_param_list param_list param opt_arg_list arg_list
 %type <i_val> type_specifier
 
 %%
@@ -146,7 +156,7 @@ statements:
     ;
 
 statement:
-    declaration
+    declaration { $$ = $1; }
     | assignment ';' { $$ = $1; }
     | PRINT expression ';' { $$ = new_node(NODE_TYPE_PRINT, $2, NULL); }
     | expression ';' { $$ = new_node(NODE_TYPE_EXPR_STMT, $1, NULL); }
@@ -156,10 +166,17 @@ statement:
     | spidey_statement { $$ = $1; }
     | statement_block { $$ = $1; }
     | break_statement { $$ = $1; }
+    | function_definition { $$ = $1; }
+    | return_statement { $$ = $1; }
     ;
 
 declaration:
-    type_specifier ID ';' { install($2, $1); free($2); $$ = NULL; /* Declarations don't generate executable nodes */ }
+    type_specifier ID ';' { 
+        install_var($2, $1); 
+        $$ = new_node(NODE_TYPE_VAR_DECL, NULL, NULL); 
+        $$->var_name = $2; 
+        $$->value.type = $1; 
+    }
     ;
 
 type_specifier:
@@ -178,6 +195,7 @@ expression:
     | FLOAT_LITERAL  { struct Value v = {.type=TYPE_FLOAT, .val.f_val = $1}; $$ = new_const_node(v); }
     | BOOL_LITERAL   { struct Value v = {.type=TYPE_BOOL, .val.b_val = $1}; $$ = new_const_node(v); }
     | STRING_LITERAL { struct Value v = {.type=TYPE_STRING, .val.s_val = $1}; $$ = new_const_node(v); }
+    | ID '(' opt_arg_list ')' { $$ = new_node(NODE_TYPE_FUNC_CALL, $3, NULL); $$->var_name = $1; }
     | ID             { $$ = new_var_ref_node($1); }
     | expression ADD expression { $$ = new_node(NODE_TYPE_OP, $1, $3); $$->value.val.i_val = ADD; }
     | expression SUB expression { $$ = new_node(NODE_TYPE_OP, $1, $3); $$->value.val.i_val = SUB; }
@@ -190,6 +208,16 @@ expression:
     | expression LE expression  { $$ = new_node(NODE_TYPE_OP, $1, $3); $$->value.val.i_val = LE; }
     | expression GE expression  { $$ = new_node(NODE_TYPE_OP, $1, $3); $$->value.val.i_val = GE; }
     | '(' expression ')' { $$ = $2; }
+    ;
+
+opt_arg_list:
+    /* empty */ { $$ = NULL; }
+    | arg_list { $$ = $1; }
+    ;
+
+arg_list:
+    expression { $$ = $1; }
+    | arg_list ',' expression { $$ = new_node(NODE_TYPE_STMTS, $1, $3); }
     ;
 
 if_statement:
@@ -218,6 +246,37 @@ optional_expression:
 while_statement:
     WHILE '(' expression ')' statement { $$ = new_node(NODE_TYPE_WHILE, $3, $5); }
     ;
+
+return_statement:
+    RETURN expression ';' { $$ = new_node(NODE_TYPE_RETURN, $2, NULL); }
+    ;
+
+function_definition:
+    type_specifier FUNC ID '(' opt_param_list ')' statement_block {
+        $$ = new_node(NODE_TYPE_FUNC_DEF, $5, $7);
+        $$->var_name = $3;
+        $$->value.type = $1;
+        install_func($3, $1, $5);
+    }
+;
+
+opt_param_list:
+    /* empty */ { $$ = NULL; }
+    | param_list { $$ = $1; }
+;
+
+param_list:
+    param { $$ = $1; }
+    | param_list ',' param { $$ = new_node(NODE_TYPE_STMTS, $1, $3); }
+;
+
+param:
+    type_specifier ID {
+        $$ = new_node(NODE_TYPE_PARAM, NULL, NULL);
+        $$->var_name = $2;
+        $$->value.type = $1;
+    }
+;
 
 spidey_statement:
     SPIDEY '(' expression ')' '{' case_list '}' { $$ = new_node(NODE_TYPE_SPIDEY, $3, $6); }
@@ -291,7 +350,7 @@ struct Symbol* lookup(char* name) {
     return NULL; // Not found
 }
 
-void install(char* name, int type) {
+void install_var(char* name, int type) {
     if (lookup(name) != NULL) {
         char err[256];
         sprintf(err, "Variable '%s' already declared", name);
@@ -304,12 +363,35 @@ void install(char* name, int type) {
     }
     sym_table[sym_count].name = strdup(name);
     sym_table[sym_count].type = type;
+    sym_table[sym_count].sym_type = SYM_VAR;
+    sym_table[sym_count].params = NULL;
+    sym_count++;
+}
+
+void install_func(char* name, int type, struct AstNode* params) {
+    if (lookup(name) != NULL) {
+        char err[256];
+        sprintf(err, "Symbol '%s' already declared", name);
+        yyerror(err);
+        return;
+    }
+    if (sym_count >= MAX_SYMBOLS) {
+        yyerror("Symbol table overflow");
+        return;
+    }
+    sym_table[sym_count].name = strdup(name);
+    sym_table[sym_count].type = type;
+    sym_table[sym_count].sym_type = SYM_FUNC;
+    sym_table[sym_count].params = params;
     sym_count++;
 }
 
 // --- C Code Generation Engine ---
 void generate_c_statement(FILE* file, struct AstNode* node, int indent);
 void generate_c_expression(FILE* file, struct AstNode* node);
+void generate_param_list(FILE* file, struct AstNode* node, int install_symbols);
+void generate_arg_list(FILE* file, struct AstNode* node);
+
 char* get_c_type_string(int type);
 int get_expression_type(struct AstNode* node);
 
@@ -319,28 +401,70 @@ void indent_line(FILE* file, int level) {
     }
 }
 
+void generate_function_bodies(FILE* file, struct AstNode* node) {
+    if (!node) return;
+
+    if (node->node_type == NODE_TYPE_FUNC_DEF) {
+        int initial_sym_count = sym_count; // Save current symbol count
+
+        fprintf(file, "%s %s(", get_c_type_string(node->value.type), node->var_name);
+        if (node->left) { // Parameter list
+            generate_param_list(file, node->left, 1); // The '1' installs symbols
+        }
+        fprintf(file, ") ");
+        generate_c_statement(file, node->right, 0); // Generate function body (a statement_block)
+        fprintf(file, "\n");
+
+        sym_count = initial_sym_count; // Pop params from symbol table
+    } else if (node->node_type == NODE_TYPE_STMTS) {
+        generate_function_bodies(file, node->left);
+        generate_function_bodies(file, node->right);
+    }
+}
+
+
+void generate_main_body(FILE* file, struct AstNode* node, int indent) {
+     if (!node) return;
+
+    if (node->node_type == NODE_TYPE_STMTS) {
+        generate_main_body(file, node->left, indent);
+        generate_main_body(file, node->right, indent);
+    } else if (node->node_type != NODE_TYPE_FUNC_DEF && node->node_type != NODE_TYPE_VAR_DECL) {
+        generate_c_statement(file, node, indent);
+    }
+}
+
 void generate_c_code(FILE* file, struct AstNode* node) {
     if (!file) return;
 
     // Print C boilerplate
     fprintf(file, "#include <stdio.h>\n");
     fprintf(file, "#include <stdbool.h>\n\n");
-    fprintf(file, "int main() {\n");
 
-    // Print variable declarations
-    for (int i = 0; i < sym_count; i++) {
-        indent_line(file, 1);
-        fprintf(file, "%s %s;\n", get_c_type_string(sym_table[i].type), sym_table[i].name);
+    // Print global variable declarations and function prototypes
+    for(int i = 0; i < sym_count; i++) {
+        if (sym_table[i].sym_type == SYM_VAR) {
+            fprintf(file, "%s %s;\n", get_c_type_string(sym_table[i].type), sym_table[i].name);
+        } else { // SYM_FUNC
+            fprintf(file, "%s %s(", get_c_type_string(sym_table[i].type), sym_table[i].name);
+            if (sym_table[i].params) {
+                generate_param_list(file, sym_table[i].params, 0); // '0' means don't install
+            }
+            fprintf(file, ");\n");
+        }
     }
-    if (sym_count > 0) fprintf(file, "\n");
+    fprintf(file, "\n");
 
-    // Generate code for the program body
-    generate_c_statement(file, node, 1);
 
-    // Print closing boilerplate
+    // Generate main function
+    fprintf(file, "int main() {\n");
+    generate_main_body(file, node, 1);
     indent_line(file, 1);
     fprintf(file, "return 0;\n");
-    fprintf(file, "}\n");
+    fprintf(file, "}\n\n");
+
+    // Generate full function definitions
+    generate_function_bodies(file, node);
 }
 
 void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
@@ -462,13 +586,54 @@ void generate_c_statement(FILE* file, struct AstNode* node, int indent) {
             fprintf(file, "break;\n");
             break;
 
-        default:
+        case NODE_TYPE_RETURN:
             indent_line(file, indent);
-            generate_c_expression(file, node);
+            fprintf(file, "return ");
+            generate_c_expression(file, node->left);
             fprintf(file, ";\n");
+            break;
+
+        case NODE_TYPE_VAR_DECL:
+            /* This is handled at a higher level (global or local scope) */
+            /* In this simplified compiler, all variables are global and declared at the top */
+            break;
+            
+        default:
+            /* Should not happen for statements, but we can be safe */
+            // indent_line(file, indent);
+            // generate_c_expression(file, node);
+            // fprintf(file, ";\n");
             break;
     }
 }
+
+void generate_param_list(FILE* file, struct AstNode* node, int install_symbols) {
+    if (!node) return;
+
+    if (node->node_type == NODE_TYPE_STMTS) { // It's a list
+        generate_param_list(file, node->left, install_symbols);
+        fprintf(file, ", ");
+        generate_param_list(file, node->right, install_symbols);
+    } else if (node->node_type == NODE_TYPE_PARAM) {
+        fprintf(file, "%s %s", get_c_type_string(node->value.type), node->var_name);
+        if (install_symbols) {
+            install_var(node->var_name, node->value.type);
+        }
+    }
+}
+
+void generate_arg_list(FILE* file, struct AstNode* node) {
+    if (!node) return;
+
+    if (node->node_type == NODE_TYPE_STMTS) { // It's a list
+        generate_arg_list(file, node->left);
+        fprintf(file, ", ");
+        generate_c_expression(file, node->right);
+    } else { // It's a single expression argument
+        generate_c_expression(file, node);
+    }
+}
+
 
 void generate_c_expression(FILE* file, struct AstNode* node) {
     if (!node) {
@@ -506,6 +671,13 @@ void generate_c_expression(FILE* file, struct AstNode* node) {
             fprintf(file, "%s = ", node->var_name);
             generate_c_expression(file, node->left);
             break;
+        case NODE_TYPE_FUNC_CALL:
+            fprintf(file, "%s(", node->var_name);
+            if(node->left) {
+                 generate_arg_list(file, node->left);
+            }
+            fprintf(file, ")");
+            break;
         default:
             break;
     }
@@ -538,6 +710,13 @@ int get_expression_type(struct AstNode* node) {
             } else {
                 return TYPE_BOOL;
             }
+        }
+        case NODE_TYPE_FUNC_CALL: {
+            struct Symbol* sym = lookup(node->var_name);
+            if (sym && sym->sym_type == SYM_FUNC) {
+                return sym->type;
+            }
+            return TYPE_VOID; // Error case
         }
         default:
             return TYPE_VOID;
