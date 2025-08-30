@@ -23,6 +23,27 @@ This is a project for a compilers course that implements a source-to-source comp
 
 ## How to Build and Use the Compiler
 
+### Easy Mode (Recommended)
+
+A PowerShell script `run_lang.ps1` is provided to automate the entire compilation and execution process. It will place all generated files in an `out/` directory.
+
+1.  **Build the Compiler**: If you haven't already, build the compiler once:
+
+    ```sh
+    win_bison -d compiler.y
+    win_flex compiler.l
+    gcc compiler.tab.c lex.yy.c -o my_compiler.exe
+    ```
+
+2.  **Run Your Code**: Use the script to compile and run any of your `.txt` source files.
+    ```powershell
+    ./run_lang.ps1 test_spidey.txt
+    ```
+
+### Manual Compilation
+
+If you prefer to run the steps manually:
+
 1.  **Prerequisites**: Ensure you have Flex, Bison, and a C compiler (like GCC) installed.
 
 2.  **Compile the Compiler**: Run the following commands in your terminal to build `my_compiler.exe`:
